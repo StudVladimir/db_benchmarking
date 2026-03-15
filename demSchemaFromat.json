@@ -1,0 +1,89 @@
+{
+  "tables": [
+    {
+      "name": "user",
+      "attributes": [
+        {
+          "name": "user_id",
+          "PK": true,
+          "IDX": true,
+          "FK": false
+        },
+        {
+          "name": "name",
+          "IDX": false,
+          "FK": false
+        },
+        {
+          "name": "age",
+          "IDX": true,
+          "FK": false
+        },
+        {
+          "name": "email",
+          "IDX": false,
+          "FK": false
+        },
+        {
+          "name": "city",
+          "IDX": true,
+          "FK": false
+        }
+      ]
+    },
+    {
+      "name": "orders",
+      "attributes": [
+        {
+          "name": "order_id",
+          "PK": true,
+          "IDX": true,
+          "FK": false
+        },
+        {
+          "name": "user_id",
+          "IDX": true,
+          "FK": [
+            {
+                "condition": "from",
+                "reference_table": "user",
+                "reference_attribute": "user_id"
+            }
+        ]
+        },
+        {
+          "name": "product_id",
+          "IDX": true,
+          "FK": [
+            {
+                "condition": "from",
+                "reference_table": "products",
+                "reference_attribute": "product_id"
+            }
+        ]
+        }
+      ]
+    },
+    {
+      "name": "products",
+      "attributes": [
+        {
+          "name": "product_id",
+          "PK": true,
+          "IDX": true,
+          "FK": false
+        },
+        {
+          "name": "product_name",
+          "IDX": false,
+          "FK": false
+        },
+        {
+          "name": "price",
+          "IDX": false,
+          "FK": false
+        }
+      ]
+    }
+  ]
+}

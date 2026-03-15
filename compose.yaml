@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:17.9
+    container_name: dbb-postgres
+    environment:
+      POSTGRES_USER: benchmark
+      POSTGRES_PASSWORD: benchmark
+      POSTGRES_DB: benchmark
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  mysql:
+    image: mysql:8.4
+    container_name: dbb-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: benchmark
+      MYSQL_USER: benchmark
+      MYSQL_PASSWORD: benchmark
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  redis:
+    image: redis:8.6
+    container_name: dbb-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+
+volumes:
+  postgres_data:
+  mysql_data:
+  redis_data:
