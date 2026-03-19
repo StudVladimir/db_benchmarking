@@ -1,0 +1,367 @@
+{
+  "tables": [
+    {
+      "name": "Users",
+      "attributes": [
+        {
+          "name": "idUser",
+          "pk": true,
+          "idx": true,
+          "fk": false
+        },
+        {
+          "name": "Firstname",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        },
+        {
+          "name": "Lastname",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        },
+        {
+          "name": "Birthdate",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        },
+        {
+          "name": "Email",
+          "pk": false,
+          "idx": true,
+          "fk": false
+        },
+        {
+          "name": "Phone",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        },
+        {
+          "name": "Login",
+          "pk": false,
+          "idx": true,
+          "fk": false
+        },
+        {
+          "name": "Password_hash",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        },
+        {
+          "name": "Status",
+          "pk": false,
+          "idx": true,
+          "fk": false
+        }
+      ]
+    },
+    {
+      "name": "Sellers",
+      "attributes": [
+        {
+          "name": "idSeller",
+          "pk": true,
+          "idx": true,
+          "fk": false
+        },
+        {
+          "name": "Name",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        },
+        {
+          "name": "Rating",
+          "pk": false,
+          "idx": true,
+          "fk": false
+        },
+        {
+          "name": "Status",
+          "pk": false,
+          "idx": true,
+          "fk": false
+        },
+        {
+          "name": "Register_Date",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        }
+      ]
+    },
+    {
+      "name": "Products",
+      "attributes": [
+        {
+          "name": "idProduct",
+          "pk": true,
+          "idx": true,
+          "fk": false
+        },
+        {
+          "name": "Title",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        },
+        {
+          "name": "Seller_id",
+          "pk": false,
+          "idx": true,
+          "fk": [
+            {
+              "condition": "references",
+              "reference_table": "Sellers",
+              "reference_attribute": "idSeller"
+            }
+          ]
+        },
+        {
+          "name": "Description",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        },
+        {
+          "name": "Price",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        },
+        {
+          "name": "Currency",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        },
+        {
+          "name": "Created_Date",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        },
+        {
+          "name": "Quantity",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        }
+      ]
+    },
+    {
+      "name": "Categories",
+      "attributes": [
+        {
+          "name": "idCategory",
+          "pk": true,
+          "idx": true,
+          "fk": false
+        },
+        {
+          "name": "Name",
+          "pk": false,
+          "idx": true,
+          "fk": false
+        }
+      ]
+    },
+    {
+      "name": "Addresses",
+      "attributes": [
+        {
+          "name": "idAddresses",
+          "pk": true,
+          "idx": true,
+          "fk": false
+        },
+        {
+          "name": "Country",
+          "pk": false,
+          "idx": true,
+          "fk": false
+        },
+        {
+          "name": "City",
+          "pk": false,
+          "idx": true,
+          "fk": false
+        },
+        {
+          "name": "Street",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        },
+        {
+          "name": "Appartment",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "attributes": [
+        {
+          "name": "idOrder",
+          "pk": true,
+          "idx": true,
+          "fk": false
+        },
+        {
+          "name": "Users_id",
+          "pk": false,
+          "idx": true,
+          "fk": [
+            {
+              "condition": "references",
+              "reference_table": "Users",
+              "reference_attribute": "idUser"
+            }
+          ]
+        },
+        {
+          "name": "Status",
+          "pk": false,
+          "idx": true,
+          "fk": false
+        },
+        {
+          "name": "Create_Date",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        },
+        {
+          "name": "Paid_Date",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        },
+        {
+          "name": "Price_Total",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        },
+        {
+          "name": "Currency",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        },
+        {
+          "name": "Address_id",
+          "pk": false,
+          "idx": true,
+          "fk": [
+            {
+              "condition": "references",
+              "reference_table": "Addresses",
+              "reference_attribute": "idAddresses"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Product_Categories",
+      "attributes": [
+        {
+          "name": "Product_id",
+          "pk": true,
+          "idx": true,
+          "fk": [
+            {
+              "condition": "references",
+              "reference_table": "Products",
+              "reference_attribute": "idProduct"
+            }
+          ]
+        },
+        {
+          "name": "Category_id",
+          "pk": true,
+          "idx": true,
+          "fk": [
+            {
+              "condition": "references",
+              "reference_table": "Categories",
+              "reference_attribute": "idCategory"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Order_Items",
+      "attributes": [
+        {
+          "name": "Order_id",
+          "pk": true,
+          "idx": true,
+          "fk": [
+            {
+              "condition": "references",
+              "reference_table": "Orders",
+              "reference_attribute": "idOrder"
+            }
+          ]
+        },
+        {
+          "name": "Product_id",
+          "pk": true,
+          "idx": true,
+          "fk": [
+            {
+              "condition": "references",
+              "reference_table": "Products",
+              "reference_attribute": "idProduct"
+            }
+          ]
+        },
+        {
+          "name": "Quantity",
+          "pk": false,
+          "idx": false,
+          "fk": false
+        }
+      ]
+    },
+    {
+      "name": "User_Addresses",
+      "attributes": [
+        {
+          "name": "Users_idUser",
+          "pk": true,
+          "idx": true,
+          "fk": [
+            {
+              "condition": "references",
+              "reference_table": "Users",
+              "reference_attribute": "idUser"
+            }
+          ]
+        },
+        {
+          "name": "Addresses_idAddresses",
+          "pk": true,
+          "idx": true,
+          "fk": [
+            {
+              "condition": "references",
+              "reference_table": "Addresses",
+              "reference_attribute": "idAddresses"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
