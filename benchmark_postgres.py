@@ -1,11 +1,99 @@
 import argparse
+import csv
+import subprocess
+import threading
 import time
+import uuid
 from typing import Any
 
 from benchmark_engine import BenchmarkRunner, QueryDef, run_cmd
 
 
-def connect_postgres(host: str, port: int, user: str, password: str, dbname: str) -> Any:
+class PsqlCliConnection:
+    def __init__(self, container: str, user: str, dbname: str):
+        self.container = container
+        self.user = user
+        self.dbname = dbname
+        self.lock = threading.Lock()
+        self.proc = subprocess.Popen(
+            [
+                "docker",
+                "exec",
+                "-i",
+                container,
+                "psql",
+                "-U",
+                user,
+                "-d",
+                dbname,
+                "-At",
+                "-F",
+                "|",
+                "-q",
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+
+    def close(self) -> None:
+        if self.proc.stdin:
+            try:
+                self.proc.stdin.write("\\q\n")
+                self.proc.stdin.flush()
+            except Exception:
+                pass
+        self.proc.terminate()
+        self.proc.wait(timeout=5)
+
+    def _quote_value(self, value: Any) -> str:
+        if value is None:
+            return "NULL"
+        if isinstance(value, (int, float)):
+            return str(value)
+        text = str(value).replace("'", "''")
+        return f"'{text}'"
+
+    def _render_sql(self, sql: str, params: tuple[Any, ...]) -> str:
+        parts = sql.split("%s")
+        if len(parts) - 1 != len(params):
+            raise ValueError(f"Placeholder count mismatch for SQL: {sql}")
+        rendered = [parts[0]]
+        for i, p in enumerate(params):
+            rendered.append(self._quote_value(p))
+            rendered.append(parts[i + 1])
+        return "".join(rendered)
+
+    def execute(self, sql: str, params: tuple[Any, ...]) -> list[list[str]]:
+        marker = f"__END_{uuid.uuid4().hex}__"
+        rendered = self._render_sql(sql, params)
+        payload = f"{rendered}\nSELECT '{marker}';\n"
+
+        with self.lock:
+            if self.proc.stdin is None or self.proc.stdout is None:
+                raise RuntimeError("psql process pipes are not available")
+            self.proc.stdin.write(payload)
+            self.proc.stdin.flush()
+
+            rows: list[list[str]] = []
+            while True:
+                line = self.proc.stdout.readline()
+                if line == "":
+                    stderr = ""
+                    if self.proc.stderr is not None:
+                        stderr = self.proc.stderr.read()
+                    raise RuntimeError(f"psql session ended unexpectedly. STDERR: {stderr}")
+                line = line.rstrip("\r\n")
+                if line == marker:
+                    break
+                if line:
+                    rows.append(next(csv.reader([line], delimiter="|")))
+            return rows
+
+
+def connect_postgres_psycopg(host: str, port: int, user: str, password: str, dbname: str) -> Any:
     try:
         import psycopg
     except ImportError as ex:
@@ -31,10 +119,26 @@ def close_postgres(conn: Any) -> None:
     conn.close()
 
 
+def connect_postgres_psqlcli(container: str, user: str, dbname: str) -> PsqlCliConnection:
+    return PsqlCliConnection(container=container, user=user, dbname=dbname)
+
+
+def execute_postgres_psqlcli(conn: PsqlCliConnection, sql: str, params: tuple[Any, ...]) -> list[Any]:
+    return conn.execute(sql, params)
+
+
+def close_postgres_psqlcli(conn: PsqlCliConnection) -> None:
+    conn.close()
+
+
 def load_seed_postgres(conn: Any) -> dict[str, Any]:
-    with conn.cursor() as cur:
-        cur.execute('SELECT "Login" FROM mydb."Users" ORDER BY "idUser"')
-        logins = [row[0] for row in cur.fetchall()]
+    if isinstance(conn, PsqlCliConnection):
+        rows = conn.execute('SELECT "Login" FROM mydb."Users" ORDER BY "idUser";', tuple())
+        logins = [row[0] for row in rows if row]
+    else:
+        with conn.cursor() as cur:
+            cur.execute('SELECT "Login" FROM mydb."Users" ORDER BY "idUser"')
+            logins = [row[0] for row in cur.fetchall()]
     if not logins:
         raise RuntimeError("Users table is empty; cannot prepare Login-based query seed.")
     return {"logins": logins}
@@ -158,7 +262,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--cpus", type=float, default=1.0)
     p.add_argument("--concurrency", type=int, default=1, help="Concurrent users (threads), e.g. 1 or 10")
     p.add_argument("--warmup-requests", type=int, default=200)
-    p.add_argument("--benchmark-requests", type=int, default=10000)
+    p.add_argument("--benchmark-requests", type=int, default=11000)
+    p.add_argument("--query-mode", choices=["mixed", "sequential"], default="mixed")
+    p.add_argument("--per-query-requests", type=int, default=1000)
     p.add_argument("--stats-interval-sec", type=float, default=1.0)
     p.add_argument("--csv-folder", default="data_csv(third)")
     p.add_argument("--results-dir", default="results")
@@ -168,6 +274,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--user", default="benchmark")
     p.add_argument("--password", default="benchmark")
     p.add_argument("--database", default="benchmark")
+    p.add_argument("--container", default="dbb-postgres")
+    p.add_argument("--driver", choices=["psqlcli", "psycopg"], default="psqlcli")
 
     p.add_argument("--max-user-id", type=int, default=10000)
     p.add_argument("--max-seller-id", type=int, default=10000)
@@ -185,13 +293,24 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
+    if args.driver == "psqlcli":
+        connect_factory = lambda: connect_postgres_psqlcli(args.container, args.user, args.database)
+        execute_fn = execute_postgres_psqlcli
+        close_fn = close_postgres_psqlcli
+    else:
+        connect_factory = lambda: connect_postgres_psycopg(
+            args.host, args.port, args.user, args.password, args.database
+        )
+        execute_fn = execute_postgres
+        close_fn = close_postgres
+
     runner = BenchmarkRunner(
         db_name="postgres",
         service_name="postgres",
         container_name="dbb-postgres",
-        connect_factory=lambda: connect_postgres(args.host, args.port, args.user, args.password, args.database),
-        execute_query=execute_postgres,
-        close_connection=close_postgres,
+        connect_factory=connect_factory,
+        execute_query=execute_fn,
+        close_connection=close_fn,
         query_defs=build_queries(args),
         import_flags=["-SkipMySql", "-SkipSqlite"],
         load_seed_data=load_seed_postgres,

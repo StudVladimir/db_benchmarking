@@ -332,6 +332,7 @@ class BenchmarkRunner:
                 {
                     "db": self.db_name,
                     "phase": "load_data",
+                    "query_name": "__load_data__",
                     "duration_sec": elapsed,
                     "total_requests": 0,
                     "success_requests": 0,
@@ -340,6 +341,8 @@ class BenchmarkRunner:
                     "p50_ms": float("nan"),
                     "p95_ms": float("nan"),
                     "p99_ms": float("nan"),
+                    "avg_rows_returned": float("nan"),
+                    "total_rows_returned": 0,
                     **sys_metrics,
                 }
             )
@@ -350,22 +353,46 @@ class BenchmarkRunner:
         finally:
             self.close_connection(conn)
 
-        warmup_summary, warmup_lat, warmup_stats = self._run_query_phase(
+        warmup_summaries, warmup_lat, warmup_stats = self._run_query_phase(
             phase_name="warmup",
             total_requests=args.warmup_requests,
             concurrency=args.concurrency,
             seed=seed,
             stats_interval=args.stats_interval_sec,
-        )
-        run_summary, run_lat, run_stats = self._run_query_phase(
-            phase_name="benchmark",
-            total_requests=args.benchmark_requests,
-            concurrency=args.concurrency,
-            seed=seed,
-            stats_interval=args.stats_interval_sec,
+            active_query_defs=self.query_defs,
         )
 
-        phase_summary.extend([warmup_summary, run_summary])
+        run_summaries: list[dict[str, Any]] = []
+        run_lat: list[dict[str, Any]] = []
+        run_stats: list[dict[str, Any]] = []
+
+        query_mode = getattr(args, "query_mode", "mixed")
+        if query_mode == "sequential":
+            per_query_requests = getattr(args, "per_query_requests", 1000)
+            for qdef in self.query_defs:
+                sub_summaries, sub_lat, sub_stats = self._run_query_phase(
+                    phase_name="benchmark",
+                    total_requests=per_query_requests,
+                    concurrency=args.concurrency,
+                    seed=seed,
+                    stats_interval=args.stats_interval_sec,
+                    active_query_defs=[qdef],
+                )
+                run_summaries.extend(sub_summaries)
+                run_lat.extend(sub_lat)
+                run_stats.extend(sub_stats)
+        else:
+            run_summaries, run_lat, run_stats = self._run_query_phase(
+                phase_name="benchmark",
+                total_requests=args.benchmark_requests,
+                concurrency=args.concurrency,
+                seed=seed,
+                stats_interval=args.stats_interval_sec,
+                active_query_defs=self.query_defs,
+            )
+
+        phase_summary.extend(warmup_summaries)
+        phase_summary.extend(run_summaries)
         latencies.extend(warmup_lat)
         latencies.extend(run_lat)
         docker_stats_all.extend(warmup_stats)
@@ -384,14 +411,15 @@ class BenchmarkRunner:
         concurrency: int,
         seed: dict[str, Any],
         stats_interval: float,
-    ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+        active_query_defs: list[QueryDef],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
         lat_rows: list[dict[str, Any]] = []
         sampler = DockerStatsSampler(self.container_name, phase_name, stats_interval)
         conn_lock = threading.Lock()
         conns: list[Any] = []
         thread_local = threading.local()
 
-        query_count = len(self.query_defs)
+        query_count = len(active_query_defs)
 
         def get_conn() -> Any:
             conn = getattr(thread_local, "conn", None)
@@ -403,15 +431,17 @@ class BenchmarkRunner:
             return conn
 
         def execute_one(i: int) -> None:
-            qdef = self.query_defs[i % query_count]
+            qdef = active_query_defs[i % query_count]
             seq = i // query_count
             params = qdef.params_factory(seq, seed)
             started = time.perf_counter()
             ok = True
             err = ""
+            rows_returned = 0
             try:
                 conn = get_conn()
-                _ = self.execute_query(conn, qdef.sql, params)
+                result_rows = self.execute_query(conn, qdef.sql, params)
+                rows_returned = len(result_rows)
             except Exception as ex:
                 ok = False
                 err = str(ex)
@@ -422,6 +452,7 @@ class BenchmarkRunner:
                     "request_index": i,
                     "query_name": qdef.name,
                     "latency_ms": elapsed_ms,
+                    "rows_returned": rows_returned,
                     "ok": ok,
                     "error": err,
                 }
@@ -440,23 +471,34 @@ class BenchmarkRunner:
             except Exception:
                 pass
 
-        success_lat = [x["latency_ms"] for x in lat_rows if x["ok"]]
-        success_count = len(success_lat)
-        error_count = len(lat_rows) - success_count
-
         sys_metrics = summarize_docker_stats(sampler.samples)
 
-        summary = {
-            "db": self.db_name,
-            "phase": phase_name,
-            "duration_sec": elapsed,
-            "total_requests": len(lat_rows),
-            "success_requests": success_count,
-            "error_requests": error_count,
-            "ops_per_sec": (len(lat_rows) / elapsed) if elapsed > 0 else float("nan"),
-            "p50_ms": percentile(success_lat, 50),
-            "p95_ms": percentile(success_lat, 95),
-            "p99_ms": percentile(success_lat, 99),
-            **sys_metrics,
-        }
-        return summary, lat_rows, sampler.samples
+        summaries: list[dict[str, Any]] = []
+        query_names = sorted({x["query_name"] for x in lat_rows})
+        for qn in query_names:
+            q_rows = [x for x in lat_rows if x["query_name"] == qn]
+            q_success_lat = [x["latency_ms"] for x in q_rows if x["ok"]]
+            q_success_count = len(q_success_lat)
+            q_error_count = len(q_rows) - q_success_count
+            q_success_rows = [x["rows_returned"] for x in q_rows if x["ok"]]
+
+            summaries.append(
+                {
+                    "db": self.db_name,
+                    "phase": phase_name,
+                    "query_name": qn,
+                    "duration_sec": elapsed,
+                    "total_requests": len(q_rows),
+                    "success_requests": q_success_count,
+                    "error_requests": q_error_count,
+                    "ops_per_sec": (len(q_rows) / elapsed) if elapsed > 0 else float("nan"),
+                    "p50_ms": percentile(q_success_lat, 50),
+                    "p95_ms": percentile(q_success_lat, 95),
+                    "p99_ms": percentile(q_success_lat, 99),
+                    "avg_rows_returned": statistics.fmean(q_success_rows) if q_success_rows else float("nan"),
+                    "total_rows_returned": sum(q_success_rows) if q_success_rows else 0,
+                    **sys_metrics,
+                }
+            )
+
+        return summaries, lat_rows, sampler.samples
