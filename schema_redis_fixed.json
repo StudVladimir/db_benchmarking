@@ -286,8 +286,8 @@
           "fk": [
             {
               "condition": "references",
-              "reference_table": "Categories",
-              "reference_attribute": "idCategory"
+              "reference_table": "Products",
+              "reference_attribute": "idProduct"
             }
           ]
         },
@@ -295,7 +295,13 @@
           "name": "Category_id",
           "pk": false,
           "idx": true,
-          "fk": false
+          "fk": [
+            {
+              "condition": "references",
+              "reference_table": "Categories",
+              "reference_attribute": "idCategory"
+            }
+          ]
         }
       ]
     },
@@ -315,8 +321,8 @@
           "fk": [
             {
               "condition": "references",
-              "reference_table": "Products",
-              "reference_attribute": "idProduct"
+              "reference_table": "Orders",
+              "reference_attribute": "idOrder"
             }
           ]
         },
@@ -324,7 +330,13 @@
           "name": "Product_id",
           "pk": false,
           "idx": true,
-          "fk": false
+          "fk": [
+            {
+              "condition": "references",
+              "reference_table": "Products",
+              "reference_attribute": "idProduct"
+            }
+          ]
         },
         {
           "name": "Quantity",
@@ -350,8 +362,8 @@
           "fk": [
             {
               "condition": "references",
-              "reference_table": "Addresses",
-              "reference_attribute": "idAddresses"
+              "reference_table": "Users",
+              "reference_attribute": "idUser"
             }
           ]
         },
@@ -359,7 +371,13 @@
           "name": "Address_id",
           "pk": false,
           "idx": true,
-          "fk": false
+          "fk": [
+            {
+              "condition": "references",
+              "reference_table": "Addresses",
+              "reference_attribute": "idAddresses"
+            }
+          ]
         }
       ]
     }

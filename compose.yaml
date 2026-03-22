@@ -33,7 +33,17 @@ services:
       - redis_data:/data
     command: ["redis-server", "--appendonly", "yes"]
 
+  sqlite:
+    image: keinos/sqlite3:latest
+    container_name: dbb-sqlite
+    user: "0:0"
+    volumes:
+      - sqlite_data:/data
+    working_dir: /data
+    command: ["tail", "-f", "/dev/null"]
+
 volumes:
   postgres_data:
   mysql_data:
   redis_data:
+  sqlite_data:
